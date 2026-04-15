@@ -1,0 +1,87 @@
+# ========================
+# .syncignore - SyncVCS Ignore File
+# ========================
+# Similar to .gitignore — defines files and folders
+# that should NOT be tracked or synced.
+#
+# Patterns:
+#   *       → matches any characters (except /)
+#   **      → matches any path (including /)
+#   ?       → matches a single character
+#   !file   → negation (re-include a previously ignored pattern)
+#   public  → ignores the public folder and everything inside it
+#   folder/ → also matches a directory
+#
+# Lines starting with # are comments
+# Blank lines are ignored
+# ========================
+
+# --- Version Control ---
+.git
+.svn
+.hg
+
+# --- Package Managers ---
+node_modules
+vendor
+bower_components
+
+# --- Build Outputs ---
+dist
+build
+out
+.next
+.nuxt
+
+# --- IDE / Editor ---
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.project
+.settings
+
+# --- OS Generated ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+
+# --- Compiled Files ---
+*.pyc
+*.pyo
+*.class
+*.o
+*.obj
+
+# --- Temporary Files ---
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# --- Archives ---
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# --- Cache ---
+.cache
+__pycache__
+*.cache
+
+# --- SyncVCS Internal ---
+.file-sync

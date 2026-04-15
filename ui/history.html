@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SyncVCS - History</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        
+        <!-- Sidebar (Project context — scoped to selected project) -->
+        <div class="sidebar">
+            <a href="projects.html" class="nav-item" data-tooltip="All Projects">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+
+            <div style="width: 36px; height: 1px; background: var(--border); margin: 5px 0;"></div>
+
+            <a href="changes.html" class="nav-item" data-tooltip="Local Changes">
+                <i class="fas fa-layer-group"></i>
+            </a>
+            <a href="history.html" class="nav-item active" data-tooltip="Sync History">
+                <i class="fas fa-history"></i>
+            </a>
+            
+            <div class="bottom-nav">
+                <a href="#" class="nav-item" data-tooltip="Project Settings" id="nav-project-settings">
+                    <i class="fas fa-sliders-h"></i>
+                </a>
+                <a href="settings.html" class="nav-item" data-tooltip="App Settings">
+                    <i class="fas fa-cog"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+                <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                    <div class="page-title">
+                        <i class="fas fa-history"></i> Staging History
+                    </div>
+                    <div class="search-box" style="margin: 0; max-width: 250px;">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="app-input" placeholder="Search logs...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="scroll-area">
+                <div class="history-timeline">
+                    <!-- Dynamic history rendered by renderer.js -->
+                    <div style="text-align: center; padding: 80px 20px; color: var(--text-muted);">
+                        <i class="fas fa-spinner spinner" style="font-size: 32px; margin-bottom: 15px; display: block;"></i>
+                        <p>Loading history...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderer.js"></script>
+</body>
+</html>

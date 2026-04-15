@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SyncVCS - Local Changes</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        
+        <!-- Sidebar (Project context) -->
+        <div class="sidebar">
+            <a href="projects.html" class="nav-item" data-tooltip="All Projects">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+
+            <div style="width: 36px; height: 1px; background: var(--border); margin: 5px 0;"></div>
+
+            <a href="changes.html" class="nav-item active" data-tooltip="Local Changes">
+                <i class="fas fa-layer-group"></i>
+            </a>
+            <a href="history.html" class="nav-item" data-tooltip="Sync History">
+                <i class="fas fa-history"></i>
+            </a>
+            
+            <div class="bottom-nav">
+                <a href="#" class="nav-item" data-tooltip="Project Settings" id="nav-project-settings">
+                    <i class="fas fa-sliders-h"></i>
+                </a>
+                <a href="settings.html" class="nav-item" data-tooltip="App Settings">
+                    <i class="fas fa-cog"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- Split View Layout -->
+        <div class="split-view">
+            
+            <!-- Left Pane: File List -->
+            <div class="file-list-pane" id="file-pane">
+                <!-- Tab switcher -->
+                <div style="display: flex; border-bottom: 1px solid var(--border); background: var(--bg-darker);">
+                    <button class="tab-btn active" id="tab-changes" onclick="switchTab('changes')" style="
+                        flex: 1; padding: 10px; border: none; background: none; color: var(--text-primary);
+                        font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 2px solid var(--accent);
+                        text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Inter', sans-serif;
+                    ">
+                        <i class="fas fa-file-code"></i> Local Changes <span id="changes-count">(0)</span>
+                    </button>
+                    <button class="tab-btn" id="tab-staged" onclick="switchTab('staged')" style="
+                        flex: 1; padding: 10px; border: none; background: none; color: var(--text-muted);
+                        font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent;
+                        text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Inter', sans-serif;
+                    ">
+                        <i class="fas fa-inbox"></i> Staged <span id="staged-count">(0)</span>
+                    </button>
+                </div>
+                
+                <div class="file-list-content" id="file-list-area">
+                    <!-- Dynamic file list rendered by renderer.js -->
+                    <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                        <i class="fas fa-spinner spinner" style="font-size: 24px; margin-bottom: 10px; display: block;"></i>
+                        <p style="font-size: 12px;">Scanning for changes...</p>
+                    </div>
+                </div>
+
+                <!-- Action Panel: Changes tab -->
+                <div class="push-panel" id="panel-changes">
+                    <label class="form-label" style="font-size: 10px;">SYNC MESSAGE</label>
+                    <textarea class="push-textarea" id="sync-message" placeholder="Describe your changes..."></textarea>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="app-btn outline" id="btn-stage" style="flex: 1;">
+                            <i class="fas fa-inbox"></i> STAGE CHANGES
+                        </button>
+                        <button class="app-btn" id="btn-deploy" style="flex: 1;">
+                            <i class="fas fa-cloud-upload-alt"></i> DEPLOY TO SERVER
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action Panel: Staged tab -->
+                <div class="push-panel" id="panel-staged" style="display: none;">
+                    <label class="form-label" style="font-size: 10px;">DEPLOY STAGED FILES</label>
+                    <textarea class="push-textarea" id="staged-message" placeholder="Deployment note..."></textarea>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="app-btn outline" id="btn-mark-deployed" style="flex: 1;">
+                            <i class="fas fa-check-double"></i> MARK AS DEPLOYED
+                        </button>
+                        <button class="app-btn" id="btn-deploy-staged" style="flex: 1;">
+                            <i class="fas fa-cloud-upload-alt"></i> DEPLOY TO SERVER
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resizer Handle -->
+            <div class="resizer" id="resizer"></div>
+
+            <!-- Right Pane: Diff Viewer -->
+            <div class="diff-pane">
+                <div class="diff-toolbar">
+                    <span style="color: var(--text-primary); font-weight: 500;">Select a file to view changes</span>
+                    <div style="margin-left: auto; display: flex; gap: 15px;">
+                        <span><i class="fas fa-plus" style="color: var(--success)"></i> 0 additions</span>
+                        <span><i class="fas fa-minus" style="color: var(--danger)"></i> 0 deletions</span>
+                    </div>
+                </div>
+                
+                <div class="diff-grid" id="diff-grid">
+                    <div class="diff-column" id="diff-old">
+                        <div class="diff-header text-muted">Original (Stored)</div>
+                        <div class="diff-content-wrapper">
+                            <div style="text-align: center; padding: 60px 20px; color: var(--text-muted); grid-column: 1 / -1;">
+                                <i class="fas fa-code" style="font-size: 32px; opacity: 0.3; margin-bottom: 15px; display: block;"></i>
+                                <p style="font-size: 13px;">Click on a file to view diff</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="diff-column" id="diff-new">
+                        <div class="diff-header text-muted">Modified (Local)</div>
+                        <div class="diff-content-wrapper"></div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Script for draggable resizer -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const resizer = document.getElementById('resizer');
+            const leftPane = document.getElementById('file-pane');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                let newWidth = e.clientX - leftPane.getBoundingClientRect().left;
+                if (newWidth > 150 && newWidth < 800) {
+                    leftPane.style.width = newWidth + 'px';
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isResizing = false;
+                document.body.style.cursor = 'default';
+            });
+        });
+    </script>
+    <script src="js/renderer.js"></script>
+</body>
+</html>

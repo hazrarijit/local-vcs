@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SyncVCS - Projects</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        
+        <!-- Sidebar (Global context - no project selected) -->
+        <div class="sidebar">
+            <a href="projects.html" class="nav-item active" data-tooltip="Projects">
+                <i class="fas fa-th-large"></i>
+            </a>
+            
+            <div class="bottom-nav">
+                <a href="settings.html" class="nav-item" data-tooltip="Settings">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <a href="#" class="nav-item" data-tooltip="Sign Out" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <i class="fas fa-folder-open"></i> Local Workspaces
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="app-btn" style="width: auto;" onclick="window.location.href='new-project.html'">
+                        <i class="fas fa-plus"></i> Add Repository
+                    </button>
+                    <button class="app-btn outline" id="btn-server-help" style="width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 15px; font-weight: 700;" title="Server Setup Guide" onclick="showServerSetupGuide()">
+                        ?
+                    </button>
+                </div>
+            </div>
+
+            <div class="scroll-area">
+                <div class="project-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" class="app-input" placeholder="Search projects...">
+                    </div>
+                </div>
+
+                <div class="project-grid">
+                    <!-- Dynamic content injected by renderer.js -->
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 80px 20px; color: var(--text-muted);">
+                        <i class="fas fa-spinner spinner" style="font-size: 32px; margin-bottom: 15px; display: block;"></i>
+                        <p>Loading projects...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderer.js"></script>
+</body>
+</html>

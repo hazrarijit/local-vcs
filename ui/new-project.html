@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SyncVCS - New Project</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        
+        <!-- Sidebar (Global context - no project selected) -->
+        <div class="sidebar">
+            <a href="projects.html" class="nav-item active" data-tooltip="Projects">
+                <i class="fas fa-th-large"></i>
+            </a>
+            
+            <div class="bottom-nav">
+                <a href="settings.html" class="nav-item" data-tooltip="Settings">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <a href="#" class="nav-item" data-tooltip="Sign Out" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header" style="justify-content: flex-start; gap: 20px;">
+                <button class="app-btn outline sm" style="width: auto; padding: 6px 12px;" onclick="window.location.href='projects.html'">
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <div class="page-title">
+                    <i class="fas fa-plus-circle"></i> Init New Repository
+                </div>
+            </div>
+
+            <div class="scroll-area flex-center" style="display: flex; justify-content: center; align-items:flex-start; padding-top: 50px;">
+                <div class="auth-box" style="transform: none; position: static; box-shadow: 0 10px 30px rgba(0,0,0,0.3); width: 500px; padding: 30px; background: var(--bg-panel);">
+                    
+                    <div style="margin-bottom: 25px;">
+                        <h3 class="page-title" style="font-size: 18px; margin-bottom: 5px;">Workspace Details</h3>
+                        <p style="color: var(--text-muted); font-size: 12px;">Link a local folder to a remote SyncVCS server.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Project Name</label>
+                        <input type="text" class="app-input" id="project-name" placeholder="e.g. Laravel_Commerce_API">
+                    </div>
+
+                    <div class="form-group" style="display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label class="form-label">Local Folder Location</label>
+                            <input type="text" class="app-input" placeholder="Select a workspace directory..." id="folder-path" readonly style="background: var(--bg-darker); cursor: pointer;">
+                        </div>
+                        <button class="app-btn outline" id="browse-folder-btn" style="width: auto; height: 38px; padding: 0 15px;">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </button>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Remote Server URL <span style="color: var(--text-muted); font-weight: 400;">(unique per project)</span></label>
+                        <input type="text" class="app-input" id="remote-url" placeholder="https://your-server.com">
+                        <p style="color: var(--text-muted); font-size: 11px; margin-top: 5px;">
+                            <i class="fas fa-info-circle"></i> This is the server where files for this project will be synced to.
+                        </p>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 30px;">
+                        <label class="form-label">Remarks / Description</label>
+                        <textarea class="app-input push-textarea" id="project-desc" placeholder="Optional notes about this project environment..." style="min-height: 80px; margin-bottom: 0;"></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 15px;">
+                        <button class="app-btn outline" onclick="window.location.href='projects.html'">CANCEL</button>
+                        <button class="app-btn success" id="init-project-btn">
+                            <i class="fas fa-save"></i> INITIALIZE SYNC
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SyncVCS - Settings</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+    <!-- Main Application Container -->
+    <div class="app-container">
+        
+        <!-- Sidebar (Global context) -->
+        <div class="sidebar">
+            <a href="projects.html" class="nav-item" data-tooltip="Projects">
+                <i class="fas fa-th-large"></i>
+            </a>
+            
+            <div class="bottom-nav">
+                <a href="settings.html" class="nav-item active" data-tooltip="Settings">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <a href="#" class="nav-item" data-tooltip="Sign Out" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="page-header">
+                <div class="page-title">
+                    <i class="fas fa-cog"></i> App Settings
+                </div>
+            </div>
+
+            <div class="scroll-area">
+                <div class="settings-group" style="max-width: 600px;">
+                    <h3 style="color: var(--text-primary); margin-bottom: 20px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Appearance</h3>
+                    
+                    <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-panel); padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+                        <div>
+                            <div style="font-weight: 600; color: var(--text-primary); font-size: 14px;">Theme Preference</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">Switch between Light and Dark interface.</div>
+                        </div>
+                        <div>
+                            <button class="app-btn outline" onclick="toggleTheme()" id="theme-btn">
+                                <i class="fas fa-adjust"></i> Toggle Theme
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/renderer.js"></script>
+</body>
+</html>
