@@ -1,6 +1,6 @@
 {
   "name": "syncvcs-client",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "SyncVCS - Desktop Version Controller & File Sync System",
   "main": "main.js",
   "scripts": {
@@ -28,7 +28,7 @@
       "node_modules/**/*"
     ],
     "win": {
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "nsis",
@@ -37,7 +37,7 @@
           ]
         }
       ],
-      "icon": "ui/assets/icon.png"
+      "icon": "ui/assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,

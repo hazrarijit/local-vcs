@@ -15,10 +15,15 @@ const AppState = {
     changes: { added: [], modified: [], deleted: [] },
     selectedFile: null,
     checkedFiles: new Set(),
-    stagedFiles: []
+    stagedFiles: [],
+    fileFilter: '',
+    selectionInitialized: {
+        changes: false,
+        staged: false
+    }
 };
 
-function syncCheckedFiles(items) {
+function syncCheckedFiles(items, tab = currentTab) {
     const availablePaths = new Set(items.map(item => item.path));
     const nextChecked = new Set();
 
@@ -28,11 +33,111 @@ function syncCheckedFiles(items) {
         }
     });
 
-    if (nextChecked.size === 0) {
+    if (!AppState.selectionInitialized[tab] && nextChecked.size === 0 && items.length > 0) {
         items.forEach(item => nextChecked.add(item.path));
+        AppState.selectionInitialized[tab] = true;
     }
 
     AppState.checkedFiles = nextChecked;
+}
+
+function bindFileListInteractions() {
+    const container = document.getElementById('file-list-area');
+    if (!container || container.dataset.bound === 'true') {
+        return;
+    }
+
+    container.addEventListener('change', (event) => {
+        const checkbox = event.target.closest('.custom-checkbox[data-path]');
+        if (!checkbox) {
+            return;
+        }
+
+        toggleFileCheck(checkbox.dataset.path, checkbox.checked);
+        event.stopPropagation();
+    });
+
+    container.addEventListener('click', (event) => {
+        const details = event.target.closest('.file-details[data-path]');
+        if (!details) {
+            return;
+        }
+
+        selectFile(details.dataset.path, details.dataset.changeType, Number(details.dataset.idx));
+    });
+
+    container.addEventListener('contextmenu', (event) => {
+        const item = event.target.closest('.file-item[data-path]');
+        if (!item) {
+            return;
+        }
+
+        event.preventDefault();
+        showFileContextMenu(event.clientX, event.clientY, item.dataset.path, item.dataset.type);
+    });
+
+    container.dataset.bound = 'true';
+}
+
+function getAllChangeFiles() {
+    return [
+        ...AppState.changes.modified.map(f => ({ ...f, type: 'M', changeType: 'update' })),
+        ...AppState.changes.added.map(f => ({ ...f, type: 'A', changeType: 'add' })),
+        ...AppState.changes.deleted.map(f => ({ ...f, type: 'D', changeType: 'delete' }))
+    ];
+}
+
+function filterFiles(items) {
+    const query = AppState.fileFilter.trim().toLowerCase();
+    if (!query) {
+        return items;
+    }
+
+    return items.filter(item => {
+        const candidates = [item.name, item.path, item.dir].filter(Boolean);
+        return candidates.some(value => value.toLowerCase().includes(query));
+    });
+}
+
+function getVisibleFiles() {
+    return currentTab === 'staged' ? filterFiles(AppState.stagedFiles || []) : filterFiles(getAllChangeFiles());
+}
+
+function updateMasterCheckbox(items = getVisibleFiles()) {
+    const masterCheckbox = document.getElementById('master-file-check');
+    if (!masterCheckbox) return;
+
+    const selectedCount = items.filter(item => AppState.checkedFiles.has(item.path)).length;
+    const hasItems = items.length > 0;
+
+    masterCheckbox.disabled = !hasItems;
+    masterCheckbox.checked = hasItems && selectedCount === items.length;
+    masterCheckbox.indeterminate = hasItems && selectedCount > 0 && selectedCount < items.length;
+    masterCheckbox.classList.toggle('indeterminate', masterCheckbox.indeterminate);
+}
+
+function applyFilterForCurrentTab() {
+    if (currentTab === 'staged') {
+        renderStagedList(AppState.stagedFiles || []);
+        return;
+    }
+
+    renderFileList(getAllChangeFiles());
+}
+
+function toggleVisibleFiles(checked) {
+    const visibleFiles = getVisibleFiles();
+    AppState.selectionInitialized[currentTab] = true;
+
+    for (const file of visibleFiles) {
+        if (checked) {
+            AppState.checkedFiles.add(file.path);
+        } else {
+            AppState.checkedFiles.delete(file.path);
+        }
+    }
+
+    applyFilterForCurrentTab();
 }
 
 // ========================
@@ -373,6 +478,8 @@ let currentTab = 'changes'; // 'changes' or 'staged'
 async function initChangesPage() {
     if (!window.syncvcs) return;
 
+    bindFileListInteractions();
+
     const projectId = sessionStorage.getItem('currentProjectId');
     if (!projectId) {
         window.location.href = 'projects.html';
@@ -445,6 +552,21 @@ async function initChangesPage() {
         markDeployedBtn.addEventListener('click', () => markStagedAsDeployed());
     }
 
+    const fileFilterInput = document.getElementById('file-filter-input');
+    if (fileFilterInput) {
+        fileFilterInput.addEventListener('input', (event) => {
+            AppState.fileFilter = event.target.value || '';
+            applyFilterForCurrentTab();
+        });
+    }
+
+    const masterFileCheck = document.getElementById('master-file-check');
+    if (masterFileCheck) {
+        masterFileCheck.addEventListener('change', (event) => {
+            toggleVisibleFiles(event.target.checked);
+        });
+    }
+
     // Sync progress listener
     window.syncvcs.sync.onProgress((data) => {
         const btns = document.querySelectorAll('#btn-deploy, #btn-deploy-staged');
@@ -495,11 +617,7 @@ async function refreshChanges() {
     AppState.changes = changes;
 
     const badge = document.getElementById('changes-count');
-    const allFiles = [
-        ...changes.modified.map(f => ({ ...f, type: 'M', changeType: 'update' })),
-        ...changes.added.map(f => ({ ...f, type: 'A', changeType: 'add' })),
-        ...changes.deleted.map(f => ({ ...f, type: 'D', changeType: 'delete' }))
-    ];
+    const allFiles = getAllChangeFiles();
 
     if (badge) badge.textContent = `(${allFiles.length})`;
 
@@ -512,19 +630,36 @@ function renderFileList(allFiles) {
     const container = document.getElementById('file-list-area');
     if (!container) return;
 
+    const filteredFiles = filterFiles(allFiles);
+
     if (allFiles.length === 0) {
+        AppState.selectionInitialized.changes = false;
+        AppState.checkedFiles.clear();
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
                 <i class="fas fa-check-circle" style="font-size: 32px; color: var(--success); margin-bottom: 15px; display: block;"></i>
                 <p style="font-size: 13px;">All files are in sync.</p>
             </div>
         `;
+        updateMasterCheckbox([]);
         return;
     }
 
-    syncCheckedFiles(allFiles);
+    if (filteredFiles.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                <i class="fas fa-search" style="font-size: 28px; opacity: 0.35; margin-bottom: 15px; display: block;"></i>
+                <p style="font-size: 13px; margin-bottom: 5px;">No files match the current filter.</p>
+                <p style="font-size: 11px;">Try a different file name or path.</p>
+            </div>
+        `;
+        updateMasterCheckbox([]);
+        return;
+    }
 
-    container.innerHTML = allFiles.map((file, idx) => {
+    syncCheckedFiles(allFiles, 'changes');
+
+    container.innerHTML = filteredFiles.map((file, idx) => {
         const statusClass = file.type === 'M' ? 'status-m' : file.type === 'A' ? 'status-a' : 'status-d';
         const isSelected = idx === 0 ? 'selected' : '';
 
@@ -540,31 +675,11 @@ function renderFileList(allFiles) {
         `;
     }).join('');
 
-    container.querySelectorAll('.custom-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', (event) => {
-            toggleFileCheck(checkbox.dataset.path, event.target.checked);
-        });
-    });
-
-    container.querySelectorAll('.file-details').forEach(details => {
-        details.addEventListener('click', () => {
-            selectFile(details.dataset.path, details.dataset.changeType, Number(details.dataset.idx));
-        });
-    });
-
-    // Attach context menu to each file item
-    container.querySelectorAll('.file-item').forEach(el => {
-        el.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const filePath = el.dataset.path;
-            const changeType = el.dataset.type;
-            showFileContextMenu(e.clientX, e.clientY, filePath, changeType);
-        });
-    });
-
-    if (allFiles.length > 0) {
-        selectFile(allFiles[0].path, allFiles[0].changeType, 0);
+    if (filteredFiles.length > 0) {
+        selectFile(filteredFiles[0].path, filteredFiles[0].changeType, 0);
     }
+
+    updateMasterCheckbox(filteredFiles);
 }
 
 async function selectFile(filePath, changeType, idx) {
@@ -652,11 +767,15 @@ function syncDiffScroll() {
 }
 
 function toggleFileCheck(filePath, checked) {
+    AppState.selectionInitialized[currentTab] = true;
+
     if (checked) {
         AppState.checkedFiles.add(filePath);
     } else {
         AppState.checkedFiles.delete(filePath);
     }
+
+    updateMasterCheckbox();
 }
 
 // ========================
@@ -779,6 +898,8 @@ async function loadStagedFiles() {
     if (badge) badge.textContent = `(${staged.length})`;
 
     if (staged.length === 0) {
+        AppState.selectionInitialized.staged = false;
+        AppState.checkedFiles.clear();
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
                 <i class="fas fa-inbox" style="font-size: 32px; opacity: 0.3; margin-bottom: 15px; display: block;"></i>
@@ -786,14 +907,38 @@ async function loadStagedFiles() {
                 <p style="font-size: 11px; color: var(--text-muted);">Use "Stage Changes" to store local changes without deploying.</p>
             </div>
         `;
+        AppState.stagedFiles = [];
+        updateMasterCheckbox([]);
         return;
     }
 
-    syncCheckedFiles(staged);
+    AppState.stagedFiles = staged;
+    renderStagedList(staged);
+}
+
+function renderStagedList(staged) {
+    const container = document.getElementById('file-list-area');
+    if (!container) return;
+
+    const filteredFiles = filterFiles(staged);
+
+    if (filteredFiles.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+                <i class="fas fa-search" style="font-size: 28px; opacity: 0.35; margin-bottom: 15px; display: block;"></i>
+                <p style="font-size: 13px; margin-bottom: 5px;">No staged files match the current filter.</p>
+                <p style="font-size: 11px;">Try a different file name or path.</p>
+            </div>
+        `;
+        updateMasterCheckbox([]);
+        return;
+    }
+
+    syncCheckedFiles(staged, 'staged');
 
     const typeMap = { add: 'A', update: 'M', delete: 'D' };
 
-    container.innerHTML = staged.map((file, idx) => {
+    container.innerHTML = filteredFiles.map((file, idx) => {
         const typeChar = typeMap[file.type] || 'M';
         const statusClass = typeChar === 'M' ? 'status-m' : typeChar === 'A' ? 'status-a' : 'status-d';
         const stagedTime = formatTimeAgo(file.stagedAt);
@@ -801,7 +946,7 @@ async function loadStagedFiles() {
         return `
             <div class="file-item" data-path="${escapeHtml(file.path)}" data-type="${file.type}" data-idx="${idx}">
                 <input type="checkbox" class="custom-checkbox" data-path="${escapeHtml(file.path)}" ${AppState.checkedFiles.has(file.path) ? 'checked' : ''}>
-                <div class="file-details">
+                <div class="file-details" data-path="${escapeHtml(file.path)}" data-change-type="${file.type}" data-idx="${idx}">
                     <div class="file-name">${escapeHtml(file.name)}</div>
                     <div class="file-path">${escapeHtml(file.dir)} · staged ${stagedTime}</div>
                 </div>
@@ -810,14 +955,7 @@ async function loadStagedFiles() {
         `;
     }).join('');
 
-    container.querySelectorAll('.custom-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', (event) => {
-            toggleFileCheck(checkbox.dataset.path, event.target.checked);
-        });
-    });
-
-    // Store staged files for deploy action
-    AppState.stagedFiles = staged;
+    updateMasterCheckbox(filteredFiles);
 }
 
 // ========================
@@ -854,6 +992,9 @@ async function stageSelectedFiles() {
         showNotification(`Staged ${result.staged} file(s) successfully!`, 'success');
         await refreshChanges();
         await refreshStagedCount();
+        if (currentTab === 'staged') {
+            await loadStagedFiles();
+        }
     } else {
         showNotification(result.message, 'error');
     }

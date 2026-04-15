@@ -11,6 +11,9 @@ const path = require('path');
 const { registerHandlers, cleanup } = require('./src/ipc/handlers');
 
 let mainWindow = null;
+const appIcon = process.platform === 'win32'
+    ? path.join(__dirname, 'ui', 'assets', 'icon.ico')
+    : path.join(__dirname, 'ui', 'assets', 'icon.png');
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -26,7 +29,7 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: false
         },
-        icon: path.join(__dirname, 'ui', 'assets', 'icon.png'),
+        icon: appIcon,
         show: false
     });
 
