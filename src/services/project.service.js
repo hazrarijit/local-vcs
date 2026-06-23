@@ -80,7 +80,10 @@ class ProjectService {
         // Create directories
         await fs.ensureDir(filesDir);
 
-        // Load .syncignore
+        // Create default .syncignore if it doesn't exist
+        this.syncIgnore.createDefaultIgnoreFile(project.folderPath);
+
+        // Load .syncignore (always starts fresh - clears previous patterns)
         this.syncIgnore.load(project.folderPath);
 
         // Scan all files
@@ -226,6 +229,40 @@ class ProjectService {
         this.store.set('projects', filtered);
 
         return { success: true, message: 'Project removed.' };
+    }
+
+    /**
+     * Re-initialize the .file-sync/ directory for an existing project
+     * Clears all encrypted snapshots and rebuilds from the current folder state
+     * @param {string} projectId
+     * @returns {object}
+     */
+    async reinitializeProject(projectId) {
+        const project = this.getProject(projectId);
+        if (!project) {
+            return { success: false, message: 'Project not found.' };
+        }
+
+        if (!fs.existsSync(project.folderPath)) {
+            return { success: false, message: 'Project folder no longer exists.' };
+        }
+
+        // Remove existing .file-sync directory
+        const syncDir = path.join(project.folderPath, SYNC_DIR);
+        await fs.remove(syncDir);
+
+        // Re-run full initialization
+        await this._initializeSyncDir(project);
+
+        // Update lastSyncAt
+        const projects = this.getProjects();
+        const idx = projects.findIndex(p => p.id === projectId);
+        if (idx !== -1) {
+            projects[idx].lastSyncAt = null;
+            this.store.set('projects', projects);
+        }
+
+        return { success: true, message: 'Project re-initialized successfully.' };
     }
 
     /**

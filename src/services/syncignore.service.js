@@ -12,6 +12,7 @@ class SyncIgnoreService {
     constructor() {
         this.patterns = [];
         this.rawRules = [];
+        this.projectRoot = null;
     }
 
     _normalizePath(value) {
@@ -19,28 +20,83 @@ class SyncIgnoreService {
     }
 
     /**
+     * Default ignore patterns for new projects
+     */
+    static get DEFAULT_PATTERNS() {
+        return [
+            // Folders to ignore
+            'vendor/',
+            'storage/',
+            'bootstrap/cache/',
+            'public/',
+            '.idea/',
+            '.file-sync/',
+            '.git/',
+            '.vscode/',
+            // File types to ignore
+            '*.log',
+            '*.zip',            
+            // System files
+            '.DS_Store',
+            'Thumbs.db'
+        ];
+    }
+
+    /**
+     * Create the default .syncignore file at project root
+     * @param {string} projectRoot - Root directory of the project
+     */
+    createDefaultIgnoreFile(projectRoot) {
+        const ignorePath = path.join(projectRoot, '.syncignore');
+
+        // Don't overwrite if file already exists
+        if (fs.existsSync(ignorePath)) {
+            return false;
+        }
+
+        const defaultContent = `# .syncignore - Patterns for files to ignore during sync
+# https://docs.example.com/syncignore
+
+# Ignore entire folders
+vendor/
+storage/
+bootstrap/cache/
+public/
+.idea/
+.file-sync/
+.git/
+.vscode/
+
+# Ignore specific file types
+*.log
+*.zip
+
+# Ignore uploaded temp folders
+public/uploads/temp/
+
+# Include specific files (negation patterns)
+!.env
+!.mcp.json
+!.syncignore
+!.gitignore
+`;
+
+        fs.writeFileSync(ignorePath, defaultContent, 'utf8');
+        return true;
+    }
+
+    /**
      * Load and parse a .syncignore file
+     * Always starts fresh - clears previous patterns before loading
      * @param {string} projectRoot - Root directory of the project
      */
     load(projectRoot) {
         const ignorePath = path.join(projectRoot, '.syncignore');
+        this.projectRoot = projectRoot;
+
+        // ALWAYS reset - ensures reload with new ignore options doesn't hold old changes
         this.patterns = [];
         this.rawRules = [];
-
-        // Default ignores (always applied)
-        const defaults = [
-            '.file-sync',
-            '.file-sync/**',
-            'node_modules',
-            'node_modules/**',
-            '.git',
-            '.git/**',
-            '.DS_Store',
-            'Thumbs.db',
-            '*.log'
-        ];
-
-        defaults.forEach(p => this._addPattern(p));
 
         if (fs.existsSync(ignorePath)) {
             const content = fs.readFileSync(ignorePath, 'utf8');
@@ -54,6 +110,25 @@ class SyncIgnoreService {
                 this.rawRules.push(line);
             }
         }
+    }
+
+    /**
+     * Reload the ignore file - useful when .syncignore has been modified externally
+     * Ensures fresh state without holding onto previous patterns
+     * @param {string} projectRoot - Root directory of the project
+     */
+    reload(projectRoot) {
+        // load() already resets patterns each time
+        this.load(projectRoot);
+    }
+
+    /**
+     * Get the path to the .syncignore file for a project
+     * @param {string} projectRoot - Root directory of the project
+     * @returns {string}
+     */
+    static getIgnorePath(projectRoot) {
+        return path.join(projectRoot, '.syncignore');
     }
 
     /**

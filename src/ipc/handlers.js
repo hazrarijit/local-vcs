@@ -83,6 +83,10 @@ function registerHandlers(win) {
         return await projectService.deleteProject(projectId, removeSyncDir);
     });
 
+    ipcMain.handle('project:reinitialize', async (event, projectId) => {
+        return await projectService.reinitializeProject(projectId);
+    });
+
     ipcMain.handle('project:getMetadata', async (event, projectId) => {
         return await projectService.getMetadata(projectId);
     });
@@ -238,6 +242,21 @@ function registerHandlers(win) {
             await fs.writeFile(absolutePath, storedContent, 'utf8');
 
             return { success: true, message: 'File restored to stored version.' };
+        } catch (err) {
+            return { success: false, message: err.message };
+        }
+    });
+
+    ipcMain.handle('syncignore:reload', async (event, projectId) => {
+        try {
+            const project = projectService.getProject(projectId);
+            if (!project) return { success: false, message: 'Project not found.' };
+
+            // Reload ignore patterns (always starts fresh)
+            const ignoreService = new SyncIgnoreService();
+            ignoreService.reload(project.folderPath);
+
+            return { success: true, message: 'Ignore patterns reloaded.', rules: ignoreService.getRules() };
         } catch (err) {
             return { success: false, message: err.message };
         }

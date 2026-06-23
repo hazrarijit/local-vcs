@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('syncvcs', {
         get: (id) => ipcRenderer.invoke('project:get', id),
         update: (id, updates) => ipcRenderer.invoke('project:update', id, updates),
         delete: (id, removeSyncDir) => ipcRenderer.invoke('project:delete', id, removeSyncDir),
+        reinitialize: (id) => ipcRenderer.invoke('project:reinitialize', id),
         getMetadata: (id) => ipcRenderer.invoke('project:getMetadata', id),
         selectFolder: () => ipcRenderer.invoke('project:selectFolder')
     },
@@ -103,6 +104,13 @@ contextBridge.exposeInMainWorld('syncvcs', {
         discard: (projectId, filePath, changeType) => ipcRenderer.invoke('file:discard', projectId, filePath, changeType),
         ignore: (projectId, filePath) => ipcRenderer.invoke('file:ignore', projectId, filePath),
         openLocation: (projectId, filePath) => ipcRenderer.invoke('file:openLocation', projectId, filePath)
+    },
+
+    // ========================
+    // SYNCIGNORE API
+    // ========================
+    syncignore: {
+        reload: (projectId) => ipcRenderer.invoke('syncignore:reload', projectId)
     },
 
 });

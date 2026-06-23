@@ -414,6 +414,141 @@ function openProject(projectId) {
     window.location.href = 'changes.html';
 }
 
+function confirmDeleteProject(projectId, projectName, event) {
+    if (event) event.stopPropagation();
+
+    const existing = document.getElementById('delete-project-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'delete-project-modal';
+    modal.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        animation: fadeIn 0.2s ease;
+    `;
+    modal.innerHTML = `
+        <div style="
+            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+            width: 440px; box-shadow: 0 25px 60px rgba(0,0,0,0.5); padding: 30px;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
+                <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(248,81,73,0.12); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-trash-alt" style="color: var(--danger); font-size: 18px;"></i>
+                </div>
+                <div>
+                    <h3 style="color: var(--text-primary); font-size: 16px; font-weight: 600; margin: 0;">Remove Project</h3>
+                    <p style="color: var(--text-muted); font-size: 12px; margin: 2px 0 0;">${escapeHtml(projectName)}</p>
+                </div>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin-bottom: 18px;">
+                This will remove the project from the list. The actual files on disk will <strong>not</strong> be deleted.
+            </p>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 24px;
+                padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-darker);">
+                <input type="checkbox" id="del-remove-syncdir" style="width: 15px; height: 15px; accent-color: var(--danger);">
+                <span style="font-size: 12px; color: var(--text-secondary);">
+                    Also delete the <code style="color: var(--warn);">.file-sync/</code> snapshot directory from disk
+                </span>
+            </label>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button class="app-btn outline" style="width: auto;" onclick="document.getElementById('delete-project-modal').remove()">Cancel</button>
+                <button class="app-btn" style="width: auto; background: var(--danger); border-color: var(--danger);" id="del-confirm-btn">
+                    <i class="fas fa-trash-alt"></i> Remove Project
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    document.getElementById('del-confirm-btn').addEventListener('click', async () => {
+        const removeSyncDir = document.getElementById('del-remove-syncdir').checked;
+        const btn = document.getElementById('del-confirm-btn');
+        btn.innerHTML = '<i class="fas fa-spinner spinner"></i> Removing...';
+        btn.disabled = true;
+
+        const result = await window.syncvcs.project.delete(projectId, removeSyncDir);
+        modal.remove();
+        if (result.success) {
+            showNotification('Project removed.', 'success');
+            if (document.querySelector('.project-grid')) {
+                await loadProjects();
+            } else {
+                sessionStorage.removeItem('currentProjectId');
+                setTimeout(() => window.location.href = 'projects.html', 600);
+            }
+        } else {
+            showNotification(result.message, 'error');
+        }
+    });
+}
+
+function confirmReinitProject(projectId, projectName, event) {
+    if (event) event.stopPropagation();
+
+    const existing = document.getElementById('reinit-project-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'reinit-project-modal';
+    modal.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        animation: fadeIn 0.2s ease;
+    `;
+    modal.innerHTML = `
+        <div style="
+            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+            width: 440px; box-shadow: 0 25px 60px rgba(0,0,0,0.5); padding: 30px;
+        ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
+                <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(210,153,34,0.12); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-redo-alt" style="color: var(--warn); font-size: 18px;"></i>
+                </div>
+                <div>
+                    <h3 style="color: var(--text-primary); font-size: 16px; font-weight: 600; margin: 0;">Re-initialize Project</h3>
+                    <p style="color: var(--text-muted); font-size: 12px; margin: 2px 0 0;">${escapeHtml(projectName)}</p>
+                </div>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
+                This will <strong>delete the existing snapshot</strong> and re-scan all current files from scratch.
+                All previous version history stored in <code style="color: var(--warn);">.file-sync/</code> will be lost.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                <button class="app-btn outline" style="width: auto;" onclick="document.getElementById('reinit-project-modal').remove()">Cancel</button>
+                <button class="app-btn" style="width: auto; background: var(--warn); border-color: var(--warn); color: #000;" id="reinit-confirm-btn">
+                    <i class="fas fa-redo-alt"></i> Re-initialize
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+
+    document.getElementById('reinit-confirm-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('reinit-confirm-btn');
+        btn.innerHTML = '<i class="fas fa-spinner spinner"></i> Initializing...';
+        btn.disabled = true;
+
+        const result = await window.syncvcs.project.reinitialize(projectId);
+        modal.remove();
+        if (result.success) {
+            showNotification('Project re-initialized successfully!', 'success');
+            if (document.querySelector('.project-grid')) {
+                await loadProjects();
+            } else {
+                // Reload changes page so tracking reflects the fresh snapshot
+                setTimeout(() => window.location.reload(), 600);
+            }
+        } else {
+            showNotification(result.message, 'error');
+        }
+    });
+}
+
 // ========================
 // PAGE: NEW PROJECT (new-project.html)
 // ========================
@@ -1400,6 +1535,33 @@ async function showProjectSettings() {
                 <div id="ps-connection-result" style="margin-top: 10px; font-size: 13px;"></div>
             </div>
 
+            <!-- Danger Zone -->
+            <div style="border: 1px solid rgba(248,81,73,0.3); border-radius: 8px; padding: 18px; margin-bottom: 20px;">
+                <span style="font-size: 11px; color: var(--danger); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-bottom: 14px;">
+                    <i class="fas fa-exclamation-triangle"></i> Danger Zone
+                </span>
+                <div style="display: flex; gap: 10px;">
+                    <button id="ps-reinit-btn" style="
+                        flex: 1; padding: 9px 14px; border-radius: 7px;
+                        border: 1px solid rgba(210,153,34,0.4); background: rgba(210,153,34,0.07);
+                        color: var(--warn); font-size: 12px; font-weight: 600; cursor: pointer;
+                        display: flex; align-items: center; justify-content: center; gap: 7px;
+                        transition: all 0.15s ease; text-transform: uppercase; letter-spacing: 0.4px;
+                    ">
+                        <i class="fas fa-redo-alt"></i> Re-initialize
+                    </button>
+                    <button id="ps-delete-btn" style="
+                        flex: 1; padding: 9px 14px; border-radius: 7px;
+                        border: 1px solid rgba(248,81,73,0.4); background: rgba(248,81,73,0.07);
+                        color: var(--danger); font-size: 12px; font-weight: 600; cursor: pointer;
+                        display: flex; align-items: center; justify-content: center; gap: 7px;
+                        transition: all 0.15s ease; text-transform: uppercase; letter-spacing: 0.4px;
+                    ">
+                        <i class="fas fa-trash-alt"></i> Delete Project
+                    </button>
+                </div>
+            </div>
+
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                 <button class="app-btn outline" onclick="document.getElementById('project-settings-modal').remove()" style="width: auto;">
                     Cancel
@@ -1416,6 +1578,18 @@ async function showProjectSettings() {
     // Close on backdrop click
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
+    });
+
+    // Re-initialize button
+    document.getElementById('ps-reinit-btn').addEventListener('click', () => {
+        modal.remove();
+        confirmReinitProject(project.id, project.name);
+    });
+
+    // Delete button
+    document.getElementById('ps-delete-btn').addEventListener('click', () => {
+        modal.remove();
+        confirmDeleteProject(project.id, project.name);
     });
 
     // Test connection button
