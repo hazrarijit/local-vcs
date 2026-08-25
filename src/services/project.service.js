@@ -69,6 +69,23 @@ class ProjectService {
     }
 
     /**
+     * Atomically write a JSON file using tmp + rename to prevent corruption on crash
+     * @param {string} filePath - Target JSON file path
+     * @param {object} data - Data to write
+     */
+    async _atomicWriteJson(filePath, data) {
+        const tmpPath = filePath + '.tmp.' + Date.now() + '.' + process.pid;
+        try {
+            await fs.writeJson(tmpPath, data, { spaces: 2 });
+            await fs.rename(tmpPath, filePath);
+        } catch (err) {
+            // Cleanup temp file on failure
+            await fs.remove(tmpPath).catch(() => {});
+            throw err;
+        }
+    }
+
+    /**
      * Initialize the .file-sync/ directory with encrypted copies and metadata
      * @param {object} project
      */
@@ -118,10 +135,11 @@ class ProjectService {
                 const encryptedFilePath = path.join(filesDir, encryptedFileName);
                 await fs.writeFile(encryptedFilePath, encrypted);
 
-                // Store metadata
+                // Store metadata with lastMtime for fast change detection
                 metadata.files[relativePath] = {
                     hash: fileHash,
                     lastModified: stat.mtime.toISOString(),
+                    lastMtime: stat.mtime.getTime(),
                     size: stat.size,
                     versionId,
                     encryptedFile: encryptedFileName,
@@ -132,8 +150,8 @@ class ProjectService {
             }
         }
 
-        // Write metadata
-        await fs.writeJson(metadataPath, metadata, { spaces: 2 });
+        // Write metadata atomically
+        await this._atomicWriteJson(metadataPath, metadata);
     }
 
     /**
@@ -315,7 +333,7 @@ class ProjectService {
             }
         }
 
-        await fs.writeJson(metadataPath, metadata, { spaces: 2 });
+        await this._atomicWriteJson(metadataPath, metadata);
     }
 
     /**
@@ -420,6 +438,7 @@ class ProjectService {
                     ...existing,
                     hash: fileHash,
                     lastModified: stat.mtime.toISOString(),
+                    lastMtime: stat.mtime.getTime(),
                     size: stat.size,
                     versionId,
                     encryptedFile: encryptedFileName,
@@ -436,7 +455,7 @@ class ProjectService {
         }
 
         metadata.lastScanAt = new Date().toISOString();
-        await fs.writeJson(metadataPath, metadata, { spaces: 2 });
+        await this._atomicWriteJson(metadataPath, metadata);
 
         return { success: true, staged, message: `Staged ${staged} file(s).` };
     }
@@ -507,7 +526,7 @@ class ProjectService {
             }
         }
 
-        await fs.writeJson(metadataPath, metadata, { spaces: 2 });
+        await this._atomicWriteJson(metadataPath, metadata);
     }
 }
 

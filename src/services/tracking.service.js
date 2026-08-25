@@ -23,6 +23,7 @@ class TrackingService {
 
     /**
      * Scan a project for file changes
+     * Uses mtime pre-check: only hashes files whose modification time changed.
      * @param {string} projectId
      * @returns {Promise<object>} - { added: [], modified: [], deleted: [] }
      */
@@ -55,7 +56,9 @@ class TrackingService {
                 const stat = await fs.stat(absolutePath);
                 if (!stat.isFile()) continue;
 
-                if (!(relativePath in storedFiles)) {
+                const storedEntry = storedFiles[relativePath];
+
+                if (!storedEntry) {
                     // New file - not in metadata
                     changes.added.push({
                         path: relativePath,
@@ -65,17 +68,26 @@ class TrackingService {
                         lastModified: stat.mtime.toISOString()
                     });
                 } else {
-                    // File exists in metadata - check if modified via hash
+                    // File exists in metadata — mtime pre-check (fast path)
+                    const currentMtime = stat.mtime.getTime();
+                    const storedMtime = storedEntry.lastMtime;
+
+                    // If we have a stored mtime and it matches, skip expensive hashing
+                    if (storedMtime !== undefined && currentMtime === storedMtime) {
+                        continue; // UNCHANGED — no file read, no hash computation
+                    }
+
+                    // mtime changed or no stored mtime (migration) — verify via hash
                     const currentHash = await hashFile(absolutePath);
 
-                    if (currentHash !== storedFiles[relativePath].hash) {
+                    if (currentHash !== storedEntry.hash) {
                         changes.modified.push({
                             path: relativePath,
                             name: path.basename(relativePath),
                             dir: path.dirname(relativePath),
                             size: stat.size,
                             lastModified: stat.mtime.toISOString(),
-                            oldHash: storedFiles[relativePath].hash,
+                            oldHash: storedEntry.hash,
                             newHash: currentHash
                         });
                     }
