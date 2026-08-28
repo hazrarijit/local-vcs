@@ -5,7 +5,7 @@
  * with the renderer process. Each handler maps to a service method.
  */
 
-const { ipcMain, dialog, shell } = require('electron');
+const { ipcMain, dialog, shell, app } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -331,6 +331,43 @@ function registerHandlers(win) {
         ignoreService.load(project.folderPath);
 
         return await buildFileTree(project.folderPath, project.folderPath, ignoreService);
+    });
+
+    // ========================
+    // UPDATE HANDLERS (auto-update via GitHub Releases)
+    // ========================
+
+    ipcMain.handle('update:check', async () => {
+        const svc = app.updateService;
+        if (!svc) return { success: false, message: 'Update service not initialized' };
+        return await svc.checkForUpdates(false);
+    });
+
+    ipcMain.handle('update:download', async () => {
+        const svc = app.updateService;
+        if (!svc) return { success: false, message: 'Update service not initialized' };
+        return await svc.downloadUpdate();
+    });
+
+    ipcMain.handle('update:install', async () => {
+        const svc = app.updateService;
+        if (!svc) return { success: false, message: 'Update service not initialized' };
+        return svc.quitAndInstall();
+    });
+
+    ipcMain.handle('update:getStatus', async () => {
+        const svc = app.updateService;
+        if (!svc) return { currentVersion: app.getVersion(), isPackaged: app.isPackaged };
+        return svc.getStatus();
+    });
+
+    ipcMain.handle('update:getVersion', async () => {
+        return { version: app.getVersion(), isPackaged: app.isPackaged };
+    });
+
+    ipcMain.handle('update:openReleases', async () => {
+        await shell.openExternal('https://github.com/hazrarijit/local-vcs/releases');
+        return { success: true };
     });
 
     // ========================

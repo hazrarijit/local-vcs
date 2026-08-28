@@ -1472,6 +1472,173 @@ async function initSettingsPage() {
             </div>
         </div>
     `;
+
+    // Init update UI after DOM rebuilt
+    initUpdateUI();
+}
+
+// ========================
+// APP UPDATE LOGIC (settings.html + global banner)
+// ========================
+let updateUnsubscribe = null;
+
+function initUpdateUI() {
+    if (!window.syncvcs?.update) return;
+    // Load current version + status
+    window.syncvcs.update.getVersion().then(info => {
+        const verEl = document.getElementById('current-version');
+        const badge = document.getElementById('packaged-badge');
+        if (verEl) verEl.textContent = `v${info.version}`;
+        if (badge) {
+            badge.textContent = info.isPackaged ? 'packaged' : 'dev mode';
+            badge.style.color = info.isPackaged ? 'var(--success)' : 'var(--warn)';
+            badge.style.borderColor = info.isPackaged ? 'var(--success)' : 'var(--warn)';
+        }
+    });
+    window.syncvcs.update.getStatus().then(status => {
+        if (status.isUpdateDownloaded) {
+            handleUpdateStatus({ state: 'downloaded', version: status.pendingVersion, message: `Update v${status.pendingVersion} ready` });
+        } else if (status.isDownloading) {
+            handleUpdateStatus({ state: 'downloading', percent: status.downloadProgress?.percent || 0 });
+        }
+    });
+    // Subscribe to live events
+    if (updateUnsubscribe) updateUnsubscribe();
+    updateUnsubscribe = window.syncvcs.update.onStatus(handleUpdateStatus);
+
+    // Also show global banner on any page if update available/downloaded
+    if (!window._updateGlobalListener) {
+        window._updateGlobalListener = true;
+        window.syncvcs.update.onStatus((data) => {
+            if (data.state === 'available' && window.location.pathname.split('/').pop() !== 'settings.html') {
+                showNotification(`Update v${data.version} available — see Settings to download`, 'info', 6000);
+            }
+            if (data.state === 'downloaded') {
+                showNotification(`Update v${data.version} ready — restart to install`, 'success', 8000);
+            }
+        });
+    }
+}
+
+function handleUpdateStatus(data) {
+    const statusText = document.getElementById('update-status-text');
+    const statusIcon = document.getElementById('update-status-icon');
+    const btnCheck = document.getElementById('btn-check-update');
+    const btnDl = document.getElementById('btn-download-update');
+    const btnInstall = document.getElementById('btn-install-update');
+    const progressWrap = document.getElementById('update-progress-wrap');
+    const progressBar = document.getElementById('update-progress-bar');
+    const progressLabel = document.getElementById('update-progress-label');
+    const progressPercent = document.getElementById('update-progress-percent');
+    const notesEl = document.getElementById('update-notes');
+
+    if (!statusText) return; // not on settings page
+
+    const state = data.state;
+
+    if (state === 'checking') {
+        statusText.textContent = 'Checking for updates...';
+        statusText.style.color = 'var(--text-muted)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner spinner" style="color: var(--accent);"></i>';
+        if (btnCheck) { btnCheck.disabled = true; btnCheck.innerHTML = '<i class="fas fa-spinner spinner"></i> Checking...'; }
+        if (progressWrap) progressWrap.style.display = 'none';
+        if (notesEl) notesEl.style.display = 'none';
+        if (btnDl) btnDl.style.display = 'none';
+        if (btnInstall) btnInstall.style.display = 'none';
+    } else if (state === 'available') {
+        statusText.textContent = data.message || `Update available: v${data.version} (current v${data.currentVersion || ''})`;
+        statusText.style.color = 'var(--accent)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-arrow-alt-circle-down" style="color: var(--accent);"></i>';
+        if (btnCheck) { btnCheck.disabled = false; btnCheck.innerHTML = '<i class="fas fa-sync-alt"></i> Check for Updates'; }
+        if (btnDl) btnDl.style.display = '';
+        if (btnInstall) btnInstall.style.display = 'none';
+        if (progressWrap) progressWrap.style.display = 'none';
+        if (notesEl && (data.releaseNotes || data.body)) {
+            const notes = typeof data.releaseNotes === 'string' ? data.releaseNotes : (data.releaseNotes?.[0]?.note || data.body || '');
+            // strip HTML if needed
+            const text = notes.replace(/<[^>]*>/g, '').slice(0, 2000);
+            notesEl.textContent = text || `Update v${data.version} is available.`;
+            notesEl.style.display = 'block';
+        } else if (notesEl && data.version) {
+            notesEl.textContent = `Update v${data.version} available. Click Download to fetch it.`;
+            notesEl.style.display = 'block';
+        }
+        if (data.fallback && data.htmlUrl) {
+            if (btnDl) { btnDl.innerHTML = '<i class="fas fa-external-link-alt"></i> View Release'; btnDl.onclick = () => window.syncvcs.update.openReleases(); }
+        }
+    } else if (state === 'not-available') {
+        statusText.textContent = data.message || 'You are on the latest version.';
+        statusText.style.color = 'var(--success)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color: var(--success);"></i>';
+        if (btnCheck) { btnCheck.disabled = false; btnCheck.innerHTML = '<i class="fas fa-sync-alt"></i> Check for Updates'; }
+        if (btnDl) btnDl.style.display = 'none';
+        if (btnInstall) btnInstall.style.display = 'none';
+        if (progressWrap) progressWrap.style.display = 'none';
+        if (notesEl) notesEl.style.display = 'none';
+    } else if (state === 'downloading') {
+        const pct = Math.round(data.percent || 0);
+        statusText.textContent = data.message || `Downloading ${pct}%`;
+        statusText.style.color = 'var(--warn)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner spinner" style="color: var(--warn);"></i>';
+        if (progressWrap) progressWrap.style.display = 'block';
+        if (progressBar) progressBar.style.width = pct + '%';
+        if (progressPercent) progressPercent.textContent = pct + '%';
+        if (progressLabel) progressLabel.textContent = data.message || 'Downloading...';
+        if (btnDl) { btnDl.disabled = true; btnDl.innerHTML = '<i class="fas fa-spinner spinner"></i> Downloading...'; }
+    } else if (state === 'downloaded') {
+        statusText.textContent = data.message || `Update v${data.version} ready — restart to install`;
+        statusText.style.color = 'var(--success)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-rocket" style="color: var(--success);"></i>';
+        if (progressWrap) progressWrap.style.display = 'none';
+        if (btnDl) btnDl.style.display = 'none';
+        if (btnInstall) btnInstall.style.display = '';
+        if (btnCheck) { btnCheck.disabled = false; btnCheck.innerHTML = '<i class="fas fa-sync-alt"></i> Check for Updates'; }
+        showNotification(data.message || 'Update ready!', 'success', 6000);
+    } else if (state === 'error') {
+        statusText.textContent = data.message || 'Update check failed';
+        statusText.style.color = 'var(--danger)';
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>';
+        if (btnCheck) { btnCheck.disabled = false; btnCheck.innerHTML = '<i class="fas fa-sync-alt"></i> Retry'; }
+        if (progressWrap) progressWrap.style.display = 'none';
+        if (btnDl) { btnDl.disabled = false; btnDl.innerHTML = '<i class="fas fa-download"></i> Download Update'; }
+    }
+}
+
+async function checkForUpdates() {
+    if (!window.syncvcs?.update) { showNotification('Update service not available', 'error'); return; }
+    handleUpdateStatus({ state: 'checking' });
+    const res = await window.syncvcs.update.check();
+    if (res && res.fallback && res.htmlUrl) {
+        // fallback already handled via status event, but also ensure UI
+        handleUpdateStatus({ state: 'available', version: res.version, htmlUrl: res.htmlUrl, fallback: true, message: `Update available: v${res.version}` });
+    } else if (res && res.state === 'not-available') {
+        handleUpdateStatus({ state: 'not-available', message: res.message || `You're on latest (v${res.currentVersion})`, currentVersion: res.currentVersion });
+    }
+}
+
+async function downloadUpdate() {
+    if (!window.syncvcs?.update) return;
+    const res = await window.syncvcs.update.download();
+    if (res && res.fallback && res.htmlUrl) {
+        showNotification('Opened releases page', 'info');
+        return;
+    }
+    if (!res || !res.success) {
+        showNotification(res?.message || 'Download failed', 'error');
+        handleUpdateStatus({ state: 'error', message: res?.message || 'Download failed' });
+    } else {
+        handleUpdateStatus({ state: 'downloading', percent: 0, message: 'Downloading...' });
+    }
+}
+
+async function installUpdate() {
+    if (!window.syncvcs?.update) return;
+    const res = await window.syncvcs.update.install();
+    if (!res || !res.success) showNotification(res?.message || 'Install not ready', 'warning');
+}
+
+async function openReleasesPage() {
+    if (window.syncvcs?.update) await window.syncvcs.update.openReleases();
 }
 
 async function handleLogout() {
@@ -1823,6 +1990,19 @@ function showServerSetupGuide() {
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
 
+    // Global auto-update banner (all pages)
+    if (window.syncvcs?.update) {
+        try {
+            window.syncvcs.update.onStatus((data) => {
+                if (data.state === 'available' && window.location.pathname.split('/').pop() !== 'settings.html') {
+                    showNotification(`Update v${data.version} available — open Settings to download`, 'info', 6000);
+                }
+                if (data.state === 'downloaded') {
+                    showNotification(`Update v${data.version} ready — open Settings to restart & install`, 'success', 8000);
+                }
+            });
+        } catch {}
+    }
 
     const currentPage = window.location.pathname.split('/').pop() || 'index.html';
 

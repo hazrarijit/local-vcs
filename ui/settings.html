@@ -37,7 +37,41 @@
 
             <div class="scroll-area">
                 <div class="settings-group" style="max-width: 600px;">
-                    <h3 style="color: var(--text-primary); margin-bottom: 20px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Appearance</h3>
+                    <!-- App Updates -->
+                    <h3 style="color: var(--text-primary); margin-bottom: 20px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 10px;"><i class="fas fa-cloud-download-alt"></i> App Updates</h3>
+
+                    <div class="setting-item" style="display: flex; flex-direction: column; gap: 14px; background: var(--bg-panel); padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-primary); font-size: 14px;">Current Version <span id="current-version" style="color: var(--accent);">—</span> <span id="packaged-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 10px; background: var(--bg-darker); border: 1px solid var(--border); margin-left: 6px;"></span></div>
+                                <div id="update-status-text" style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">Click "Check for Updates" to see if a new version is available.</div>
+                            </div>
+                            <div id="update-status-icon" style="font-size: 22px; color: var(--text-muted);"><i class="fas fa-sync-alt"></i></div>
+                        </div>
+
+                        <!-- Progress bar (hidden by default) -->
+                        <div id="update-progress-wrap" style="display: none;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
+                                <span id="update-progress-label">Downloading...</span>
+                                <span id="update-progress-percent">0%</span>
+                            </div>
+                            <div style="height: 6px; background: var(--bg-darker); border-radius: 10px; overflow: hidden; border: 1px solid var(--border);">
+                                <div id="update-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #2ea043); transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Release notes -->
+                        <div id="update-notes" style="display: none; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 12px; color: var(--text-secondary); max-height: 150px; overflow: auto; white-space: pre-wrap;"></div>
+
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="app-btn" onclick="checkForUpdates()" id="btn-check-update"><i class="fas fa-sync-alt"></i> Check for Updates</button>
+                            <button class="app-btn outline" onclick="downloadUpdate()" id="btn-download-update" style="display: none;"><i class="fas fa-download"></i> Download Update</button>
+                            <button class="app-btn" onclick="installUpdate()" id="btn-install-update" style="display: none; background: var(--success); border-color: var(--success);"><i class="fas fa-rocket"></i> Restart & Install</button>
+                            <button class="app-btn outline" onclick="openReleasesPage()" id="btn-open-releases" style="margin-left: auto;"><i class="fas fa-external-link-alt"></i> View Releases</button>
+                        </div>
+                    </div>
+
+                    <h3 style="color: var(--text-primary); margin: 30px 0 20px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Appearance</h3>
                     
                     <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-panel); padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
                         <div>

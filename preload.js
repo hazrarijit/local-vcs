@@ -113,4 +113,21 @@ contextBridge.exposeInMainWorld('syncvcs', {
         reload: (projectId) => ipcRenderer.invoke('syncignore:reload', projectId)
     },
 
+    // ========================
+    // UPDATE API (GitHub Releases)
+    // ========================
+    update: {
+        check: () => ipcRenderer.invoke('update:check'),
+        download: () => ipcRenderer.invoke('update:download'),
+        install: () => ipcRenderer.invoke('update:install'),
+        getStatus: () => ipcRenderer.invoke('update:getStatus'),
+        getVersion: () => ipcRenderer.invoke('update:getVersion'),
+        openReleases: () => ipcRenderer.invoke('update:openReleases'),
+        onStatus: (callback) => {
+            const handler = (event, data) => callback(data);
+            ipcRenderer.on('update:status', handler);
+            return () => ipcRenderer.removeListener('update:status', handler);
+        }
+    },
+
 });

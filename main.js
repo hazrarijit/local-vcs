@@ -9,8 +9,10 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { registerHandlers, cleanup } = require('./src/ipc/handlers');
+const UpdateService = require('./src/services/update.service');
 
 let mainWindow = null;
+let updateService = null;
 const appIcon = process.platform === 'win32'
     ? path.join(__dirname, 'ui', 'assets', 'icon.ico')
     : path.join(__dirname, 'ui', 'assets', 'icon.png');
@@ -44,6 +46,12 @@ function createWindow() {
     // Register IPC handlers with window reference
     registerHandlers(mainWindow);
 
+    // Initialize auto-updater (GitHub Releases)
+    updateService = new UpdateService();
+    updateService.init(mainWindow);
+    // Expose to handlers via app global
+    app.updateService = updateService;
+
 
 
     // Navigate handler (SPA-like navigation within Electron)
@@ -76,6 +84,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
     cleanup();
+    if (updateService) updateService.destroy();
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -83,4 +92,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
     cleanup();
+    if (updateService) updateService.destroy();
 });
