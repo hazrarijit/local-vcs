@@ -1564,7 +1564,19 @@ function handleUpdateStatus(data) {
             notesEl.style.display = 'block';
         }
         if (data.fallback && data.htmlUrl) {
-            if (btnDl) { btnDl.innerHTML = '<i class="fas fa-external-link-alt"></i> View Release'; btnDl.onclick = () => window.syncvcs.update.openReleases(); }
+            if (btnDl) {
+                btnDl.innerHTML = '<i class="fas fa-external-link-alt"></i> View Release / Download';
+                btnDl.disabled = false;
+                btnDl.onclick = () => window.syncvcs.update.openReleases();
+                btnDl.style.display = '';
+            }
+        } else {
+            if (btnDl) {
+                btnDl.innerHTML = '<i class="fas fa-download"></i> Download Update';
+                btnDl.disabled = false;
+                btnDl.onclick = () => downloadUpdate();
+                btnDl.style.display = '';
+            }
         }
     } else if (state === 'not-available') {
         statusText.textContent = data.message || 'You are on the latest version.';
@@ -1600,19 +1612,40 @@ function handleUpdateStatus(data) {
         if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: var(--danger);"></i>';
         if (btnCheck) { btnCheck.disabled = false; btnCheck.innerHTML = '<i class="fas fa-sync-alt"></i> Retry'; }
         if (progressWrap) progressWrap.style.display = 'none';
-        if (btnDl) { btnDl.disabled = false; btnDl.innerHTML = '<i class="fas fa-download"></i> Download Update'; }
+        // Always offer manual download on error if we have a fallback URL
+        if (data.htmlUrl || data.fallback) {
+            if (btnDl) {
+                btnDl.style.display = '';
+                btnDl.disabled = false;
+                btnDl.innerHTML = '<i class="fas fa-external-link-alt"></i> View Releases';
+                btnDl.onclick = () => window.syncvcs.update.openReleases();
+            }
+            if (notesEl) { notesEl.textContent = 'Automatic check failed — you can download the latest release manually from GitHub.'; notesEl.style.display = 'block'; }
+        } else {
+            if (btnDl) { btnDl.disabled = false; btnDl.innerHTML = '<i class="fas fa-download"></i> Download Update'; btnDl.style.display = 'none'; }
+        }
     }
 }
 
 async function checkForUpdates() {
     if (!window.syncvcs?.update) { showNotification('Update service not available', 'error'); return; }
     handleUpdateStatus({ state: 'checking' });
-    const res = await window.syncvcs.update.check();
-    if (res && res.fallback && res.htmlUrl) {
-        // fallback already handled via status event, but also ensure UI
-        handleUpdateStatus({ state: 'available', version: res.version, htmlUrl: res.htmlUrl, fallback: true, message: `Update available: v${res.version}` });
-    } else if (res && res.state === 'not-available') {
-        handleUpdateStatus({ state: 'not-available', message: res.message || `You're on latest (v${res.currentVersion})`, currentVersion: res.currentVersion });
+    try {
+        const res = await window.syncvcs.update.check();
+        // Events already sent status, but handle direct return for robustness
+        if (res && res.state === 'available') {
+            handleUpdateStatus({ state: 'available', version: res.version, htmlUrl: res.htmlUrl, fallback: !!res.fallback, message: `Update available: v${res.version}` });
+        } else if (res && res.fallback && res.htmlUrl && res.state !== 'not-available') {
+            handleUpdateStatus({ state: 'available', version: res.version, htmlUrl: res.htmlUrl, fallback: true, message: `Update available: v${res.version}` });
+        } else if (res && res.state === 'not-available') {
+            handleUpdateStatus({ state: 'not-available', message: res.message || `You're on latest (v${res.currentVersion})`, currentVersion: res.currentVersion });
+        } else if (res && res.state === 'error') {
+            handleUpdateStatus({ state: 'error', message: res.message || 'Update check failed', htmlUrl: res.htmlUrl, fallback: !!res.fallback });
+        } else if (res && !res.success && res.message) {
+            handleUpdateStatus({ state: 'error', message: res.message, htmlUrl: res.htmlUrl, fallback: !!res.fallback });
+        }
+    } catch (e) {
+        handleUpdateStatus({ state: 'error', message: e.message || String(e), htmlUrl: 'https://github.com/hazrarijit/local-vcs/releases', fallback: true });
     }
 }
 

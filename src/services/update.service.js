@@ -112,10 +112,34 @@ class UpdateService {
             });
         });
 
-        autoUpdater.on('error', (err) => {
+        autoUpdater.on('error', async (err) => {
             log.error('[UpdateService] error:', err);
             this.isDownloading = false;
-            // Try fallback GitHub check to give user at least a link
+            // Fallback to GitHub API so user still gets a download link
+            try {
+                const apiResult = await this.checkViaGitHubApi();
+                if (apiResult.available) {
+                    this._sendStatus({
+                        state: 'available',
+                        version: apiResult.version,
+                        htmlUrl: apiResult.htmlUrl,
+                        releaseNotes: apiResult.body,
+                        message: `Update available: v${apiResult.version}`,
+                        fallback: true
+                    });
+                    return;
+                }
+                if (apiResult.htmlUrl) {
+                    this._sendStatus({
+                        state: 'error',
+                        message: (err?.message || 'Update check failed') + ' — you can download manually from Releases.',
+                        error: String(err),
+                        htmlUrl: apiResult.htmlUrl,
+                        fallback: true
+                    });
+                    return;
+                }
+            } catch {}
             this._sendStatus({
                 state: 'error',
                 message: err?.message || 'Update check failed',
@@ -158,8 +182,11 @@ class UpdateService {
         try {
             const axios = require('axios');
             const res = await axios.get('https://api.github.com/repos/hazrarijit/local-vcs/releases/latest', {
-                headers: { 'Accept': 'application/vnd.github.v3+json' },
-                timeout: 8000
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'SyncVCS-Updater'
+                },
+                timeout: 10000
             });
             const tag = (res.data.tag_name || '').replace(/^v/, '');
             const current = this.getCurrentVersion();
@@ -175,8 +202,9 @@ class UpdateService {
                 publishedAt: res.data.published_at
             };
         } catch (e) {
-            log.warn('[UpdateService] GitHub API check failed:', e.message);
-            return { source: 'github-api', available: false, error: e.message, currentVersion: this.getCurrentVersion() };
+            const msg = e.response ? `GitHub API ${e.response.status}: ${e.response.data?.message || e.message}` : e.message;
+            log.warn('[UpdateService] GitHub API check failed:', msg);
+            return { source: 'github-api', available: false, error: msg, currentVersion: this.getCurrentVersion(), htmlUrl: 'https://github.com/hazrarijit/local-vcs/releases' };
         }
     }
 
@@ -256,8 +284,10 @@ class UpdateService {
                 });
                 return { success: true, state: 'available', version: apiResult.version, currentVersion, fallback: true, htmlUrl: apiResult.htmlUrl };
             }
-            this._sendStatus({ state: 'error', message: err.message || String(err) });
-            return { success: false, state: 'error', message: err.message || String(err), currentVersion };
+            // Even on error, provide manual fallback link
+            const fallbackUrl = apiResult.htmlUrl || 'https://github.com/hazrarijit/local-vcs/releases';
+            this._sendStatus({ state: 'error', message: (err.message || String(err)) + ' — try manual download from Releases.', htmlUrl: fallbackUrl, fallback: true });
+            return { success: false, state: 'error', message: err.message || String(err), currentVersion, htmlUrl: fallbackUrl, fallback: true };
         }
     }
 
@@ -288,8 +318,15 @@ class UpdateService {
         } catch (err) {
             this.isDownloading = false;
             log.error('[UpdateService] downloadUpdate failed:', err);
-            this._sendStatus({ state: 'error', message: err.message || String(err) });
-            return { success: false, message: err.message || String(err) };
+            // Fallback: open releases page
+            try {
+                const apiResult = await this.checkViaGitHubApi();
+                const { shell } = require('electron');
+                await shell.openExternal(apiResult.htmlUrl || 'https://github.com/hazrarijit/local-vcs/releases');
+                return { success: true, fallback: true, htmlUrl: apiResult.htmlUrl, message: 'Opened releases page (fallback)' };
+            } catch {}
+            this._sendStatus({ state: 'error', message: err.message || String(err), fallback: true, htmlUrl: 'https://github.com/hazrarijit/local-vcs/releases' });
+            return { success: false, message: err.message || String(err), fallback: true, htmlUrl: 'https://github.com/hazrarijit/local-vcs/releases' };
         }
     }
 
