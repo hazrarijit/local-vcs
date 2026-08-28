@@ -32,7 +32,7 @@ class AuthService {
         }
 
         // Check if username already exists
-        const users = this.store.get('users', []);
+        const users = await this.store.get('users', []);
         const exists = users.find(u => u.username === username || u.email === email);
         if (exists) {
             return { success: false, message: 'Username or email already registered.' };
@@ -51,12 +51,12 @@ class AuthService {
         };
 
         users.push(user);
-        this.store.set('users', users);
+        await this.store.set('users', users);
 
         // Auto-login after registration
         const sessionUser = { ...user };
         delete sessionUser.password;
-        this.store.set('session', sessionUser);
+        await this.store.set('session', sessionUser);
 
         return { success: true, message: 'Registration successful.', user: sessionUser };
     }
@@ -72,7 +72,7 @@ class AuthService {
             return { success: false, message: 'Username/email and password are required.' };
         }
 
-        const users = this.store.get('users', []);
+        const users = await this.store.get('users', []);
         const user = users.find(u => u.username === identifier || u.email === identifier);
 
         if (!user) {
@@ -87,33 +87,33 @@ class AuthService {
         // Create session
         const sessionUser = { ...user };
         delete sessionUser.password;
-        this.store.set('session', sessionUser);
+        await this.store.set('session', sessionUser);
 
         return { success: true, message: 'Login successful.', user: sessionUser };
     }
 
     /**
      * Get current session
-     * @returns {object|null}
+     * @returns {Promise<object|null>}
      */
-    getSession() {
-        return this.store.get('session', null);
+    async getSession() {
+        return await this.store.get('session', null);
     }
 
     /**
      * Logout - clear session
      */
-    logout() {
-        this.store.delete('session');
+    async logout() {
+        await this.store.delete('session');
         return { success: true, message: 'Logged out.' };
     }
 
     /**
      * Check if any user is registered
-     * @returns {boolean}
+     * @returns {Promise<boolean>}
      */
-    hasUsers() {
-        const users = this.store.get('users', []);
+    async hasUsers() {
+        const users = await this.store.get('users', []);
         return users.length > 0;
     }
 
@@ -123,8 +123,8 @@ class AuthService {
      * @param {object} updates - { name?, email? }
      * @returns {object}
      */
-    updateProfile(userId, updates) {
-        const users = this.store.get('users', []);
+    async updateProfile(userId, updates) {
+        const users = await this.store.get('users', []);
         const idx = users.findIndex(u => u.id === userId);
         if (idx === -1) {
             return { success: false, message: 'User not found.' };
@@ -133,14 +133,14 @@ class AuthService {
         if (updates.name) users[idx].name = updates.name;
         if (updates.email) users[idx].email = updates.email;
 
-        this.store.set('users', users);
+        await this.store.set('users', users);
 
         // Update session if this is the current user
-        const session = this.getSession();
+        const session = await this.getSession();
         if (session && session.id === userId) {
             const sessionUser = { ...users[idx] };
             delete sessionUser.password;
-            this.store.set('session', sessionUser);
+            await this.store.set('session', sessionUser);
         }
 
         return { success: true, message: 'Profile updated.' };

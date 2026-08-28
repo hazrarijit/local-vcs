@@ -44,19 +44,19 @@ function registerHandlers(win) {
     });
 
     ipcMain.handle('auth:session', async () => {
-        return authService.getSession();
+        return await authService.getSession();
     });
 
     ipcMain.handle('auth:logout', async () => {
-        return authService.logout();
+        return await authService.logout();
     });
 
     ipcMain.handle('auth:hasUsers', async () => {
-        return authService.hasUsers();
+        return await authService.hasUsers();
     });
 
     ipcMain.handle('auth:updateProfile', async (event, userId, updates) => {
-        return authService.updateProfile(userId, updates);
+        return await authService.updateProfile(userId, updates);
     });
 
     // ========================
@@ -68,15 +68,15 @@ function registerHandlers(win) {
     });
 
     ipcMain.handle('project:getAll', async () => {
-        return projectService.getProjects();
+        return await projectService.getProjects();
     });
 
     ipcMain.handle('project:get', async (event, projectId) => {
-        return projectService.getProject(projectId);
+        return await projectService.getProject(projectId);
     });
 
     ipcMain.handle('project:update', async (event, projectId, updates) => {
-        return projectService.updateProject(projectId, updates);
+        return await projectService.updateProject(projectId, updates);
     });
 
     ipcMain.handle('project:delete', async (event, projectId, removeSyncDir) => {
@@ -201,15 +201,15 @@ function registerHandlers(win) {
     // ========================
 
     ipcMain.handle('changelog:getLogs', async (event, projectId, limit, offset) => {
-        return changelogService.getLogs(projectId, limit, offset);
+        return await changelogService.getLogs(projectId, limit, offset);
     });
 
     ipcMain.handle('changelog:search', async (event, projectId, query) => {
-        return changelogService.searchLogs(projectId, query);
+        return await changelogService.searchLogs(projectId, query);
     });
 
     ipcMain.handle('changelog:count', async (event, projectId) => {
-        return changelogService.getLogCount(projectId);
+        return await changelogService.getLogCount(projectId);
     });
 
     // ========================
@@ -218,7 +218,7 @@ function registerHandlers(win) {
 
     ipcMain.handle('file:discard', async (event, projectId, relativePath, changeType) => {
         try {
-            const project = projectService.getProject(projectId);
+            const project = await projectService.getProject(projectId);
             if (!project) return { success: false, message: 'Project not found.' };
 
             const absolutePath = path.join(project.folderPath, relativePath);
@@ -249,7 +249,7 @@ function registerHandlers(win) {
 
     ipcMain.handle('syncignore:reload', async (event, projectId) => {
         try {
-            const project = projectService.getProject(projectId);
+            const project = await projectService.getProject(projectId);
             if (!project) return { success: false, message: 'Project not found.' };
 
             // Reload ignore patterns (always starts fresh)
@@ -264,7 +264,7 @@ function registerHandlers(win) {
 
     ipcMain.handle('file:ignore', async (event, projectId, relativePath) => {
         try {
-            const project = projectService.getProject(projectId);
+            const project = await projectService.getProject(projectId);
             if (!project) return { success: false, message: 'Project not found.' };
 
             const ignorePath = path.join(project.folderPath, '.syncignore');
@@ -296,7 +296,7 @@ function registerHandlers(win) {
 
     ipcMain.handle('file:openLocation', async (event, projectId, relativePath) => {
         try {
-            const project = projectService.getProject(projectId);
+            const project = await projectService.getProject(projectId);
             if (!project) return { success: false, message: 'Project not found.' };
 
             const absolutePath = path.join(project.folderPath, relativePath);
@@ -324,7 +324,7 @@ function registerHandlers(win) {
     });
 
     ipcMain.handle('util:getFileTree', async (event, projectId) => {
-        const project = projectService.getProject(projectId);
+        const project = await projectService.getProject(projectId);
         if (!project) return null;
 
         const ignoreService = new SyncIgnoreService();
@@ -357,46 +357,43 @@ function registerHandlers(win) {
 }
 
 /**
- * Build a recursive file tree structure for the explorer panel
+ * Build file tree iteratively with pruning and safeguards for large repos.
+ * Limits total nodes to avoid freezing UI; uses SyncIgnore pruning.
  */
-async function buildFileTree(dir, rootDir, ignoreService, depth = 0) {
-    if (depth > 10) return []; // Safety limit
-
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+async function buildFileTree(dir, rootDir, ignoreService, depth = 0, stats = { count: 0, LIMIT: 5000 }) {
+    if (depth > 15) return [];
+    if (stats.count > stats.LIMIT) return [{ name: `… truncated (${stats.count} items)`, path: '', isDirectory: false, truncated: true }];
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return []; }
     const tree = [];
-
-    // Sort: directories first, then files, alphabetically
     const sorted = entries.sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory()) return -1;
         if (!a.isDirectory() && b.isDirectory()) return 1;
         return a.name.localeCompare(b.name);
     });
-
     for (const entry of sorted) {
+        if (stats.count > stats.LIMIT) { tree.push({ name: '… too many files (truncated)', path: '', isDirectory: false, truncated: true }); break; }
         const fullPath = path.join(dir, entry.name);
-        const relativePath = path.relative(rootDir, fullPath);
-
-        if (ignoreService.isIgnored(relativePath)) continue;
-
+        const relativePath = path.relative(rootDir, fullPath).replace(/\\/g, '/');
+        // Prune via ignore service
+        if (ignoreService.canPruneDir(relativePath) || ignoreService.isIgnored(relativePath)) continue;
+        // Hard skip heavy internals at shallow depth unless negated
+        if (entry.isDirectory() && ['node_modules', '.git', '.file-sync', '.svn', '__pycache__'].includes(entry.name)) {
+            // Check if any negation could include this dir
+            let negated = false;
+            for (const p of ignoreService.patterns) if (p.isNegation && p.normalized.includes(entry.name)) { negated = true; break; }
+            if (!negated) continue;
+        }
+        stats.count++;
         if (entry.isDirectory()) {
-            const children = await buildFileTree(fullPath, rootDir, ignoreService, depth + 1);
-            tree.push({
-                name: entry.name,
-                path: relativePath,
-                isDirectory: true,
-                children
-            });
+            const children = await buildFileTree(fullPath, rootDir, ignoreService, depth + 1, stats);
+            tree.push({ name: entry.name, path: relativePath, isDirectory: true, children });
         } else {
             const ext = path.extname(entry.name).toLowerCase();
-            tree.push({
-                name: entry.name,
-                path: relativePath,
-                isDirectory: false,
-                extension: ext
-            });
+            tree.push({ name: entry.name, path: relativePath, isDirectory: false, extension: ext });
         }
+        if (stats.count % 200 === 0) await new Promise(r => setImmediate(r));
     }
-
     return tree;
 }
 

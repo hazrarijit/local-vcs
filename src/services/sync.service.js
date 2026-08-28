@@ -68,7 +68,7 @@ class SyncService {
      * @returns {Promise<object>}
      */
     async syncFile(projectId, relativePath, changeType = 'update') {
-        const project = this.projectService.getProject(projectId);
+        const project = await this.projectService.getProject(projectId);
         if (!project) {
             return { success: false, message: 'Project not found.' };
         }
@@ -181,13 +181,11 @@ class SyncService {
 
         // Update project's lastSyncAt
         if (results.succeeded > 0) {
-            const projects = this.projectService.getProjects();
+            const projects = await this.projectService.getProjects();
             const idx = projects.findIndex(p => p.id === projectId);
             if (idx !== -1) {
                 projects[idx].lastSyncAt = new Date().toISOString();
-                const JsonStore = require('../utils/store');
-                const store = new JsonStore('projects.json');
-                store.set('projects', projects);
+                await this.projectService.store.set('projects', projects);
             }
         }
 

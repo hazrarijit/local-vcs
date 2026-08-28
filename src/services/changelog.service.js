@@ -26,7 +26,7 @@ class ChangelogService {
      * @returns {object} - The created log entry
      */
     async addLog(projectId, logData) {
-        const logs = this.store.get(projectId, []);
+        const logs = await this.store.get(projectId, []);
 
         const entry = {
             id: uuidv4(),
@@ -51,7 +51,7 @@ class ChangelogService {
             logs.splice(500);
         }
 
-        this.store.set(projectId, logs);
+        await this.store.set(projectId, logs);
 
         return entry;
     }
@@ -61,10 +61,10 @@ class ChangelogService {
      * @param {string} projectId
      * @param {number} limit - Max number of logs to return
      * @param {number} offset - Offset for pagination
-     * @returns {object[]}
+     * @returns {Promise<object[]>}
      */
-    getLogs(projectId, limit = 50, offset = 0) {
-        const logs = this.store.get(projectId, []);
+    async getLogs(projectId, limit = 50, offset = 0) {
+        const logs = await this.store.get(projectId, []);
         return logs.slice(offset, offset + limit);
     }
 
@@ -72,10 +72,10 @@ class ChangelogService {
      * Get a single log entry
      * @param {string} projectId
      * @param {string} logId
-     * @returns {object|null}
+     * @returns {Promise<object|null>}
      */
-    getLog(projectId, logId) {
-        const logs = this.store.get(projectId, []);
+    async getLog(projectId, logId) {
+        const logs = await this.store.get(projectId, []);
         return logs.find(l => l.id === logId) || null;
     }
 
@@ -83,10 +83,10 @@ class ChangelogService {
      * Search logs by message
      * @param {string} projectId
      * @param {string} query
-     * @returns {object[]}
+     * @returns {Promise<object[]>}
      */
-    searchLogs(projectId, query) {
-        const logs = this.store.get(projectId, []);
+    async searchLogs(projectId, query) {
+        const logs = await this.store.get(projectId, []);
         const lowerQuery = query.toLowerCase();
         return logs.filter(l =>
             l.message.toLowerCase().includes(lowerQuery) ||
@@ -98,18 +98,19 @@ class ChangelogService {
     /**
      * Get total log count for a project
      * @param {string} projectId
-     * @returns {number}
+     * @returns {Promise<number>}
      */
-    getLogCount(projectId) {
-        return this.store.get(projectId, []).length;
+    async getLogCount(projectId) {
+        const logs = await this.store.get(projectId, []);
+        return logs.length;
     }
 
     /**
      * Clear all logs for a project
      * @param {string} projectId
      */
-    clearLogs(projectId) {
-        this.store.set(projectId, []);
+    async clearLogs(projectId) {
+        await this.store.set(projectId, []);
     }
 }
 

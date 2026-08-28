@@ -839,13 +839,30 @@ async function selectFile(filePath, changeType, idx) {
 function renderDiff(diffData) {
     const toolbar = document.querySelector('.diff-toolbar');
     if (toolbar) {
+        const metaBadges = [];
+        if (diffData.isBinary) metaBadges.push('<span style="background: var(--bg-darker); border:1px solid var(--border); padding:2px 8px; border-radius:10px; font-size:11px;"><i class="fas fa-file-archive"></i> Binary</span>');
+        if (diffData.isTooLarge || diffData.preview) metaBadges.push('<span style="background: #d29922; color:#000; padding:2px 8px; border-radius:10px; font-size:11px;"><i class="fas fa-exclamation-triangle"></i> Preview</span>');
         toolbar.innerHTML = `
             <span style="color: var(--text-primary); font-weight: 500;">${escapeHtml(diffData.fileName)}</span>
-            <div style="margin-left: auto; display: flex; gap: 15px;">
+            <div style="margin-left: auto; display: flex; gap: 15px; align-items:center;">
+                ${metaBadges.join('')}
                 <span><i class="fas fa-plus" style="color: var(--success)"></i> ${diffData.additions} additions</span>
                 <span><i class="fas fa-minus" style="color: var(--danger)"></i> ${diffData.deletions} deletions</span>
             </div>
         `;
+        if (diffData.message) {
+            const banner = document.createElement('div');
+            banner.style.cssText = 'background: rgba(210,153,34,0.12); border:1px solid rgba(210,153,34,0.4); color: var(--warn); padding:8px 12px; font-size:12px; border-radius:6px; margin:8px; display:flex; gap:8px; align-items:center;';
+            banner.innerHTML = `<i class="fas fa-info-circle"></i> ${escapeHtml(diffData.message)}`;
+            // Insert after toolbar
+            toolbar.insertAdjacentElement('afterend', banner);
+            // auto remove on next diff
+            setTimeout(() => { const existing = toolbar.nextElementSibling; if (existing && existing !== document.getElementById('diff-old')) {} }, 0);
+        } else {
+            // remove previous banner if any
+            const next = toolbar.nextElementSibling;
+            if (next && next.style && next.style.cssText.includes('rgba(210,153,34')) next.remove();
+        }
     }
 
     const oldColumn = document.getElementById('diff-old');

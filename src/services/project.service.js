@@ -41,7 +41,7 @@ class ProjectService {
         }
 
         // Check for duplicate project paths
-        const projects = this.store.get('projects', []);
+        const projects = await this.store.get('projects', []);
         const exists = projects.find(p => p.folderPath === folderPath);
         if (exists) {
             return { success: false, message: 'A project already exists for this folder.' };
@@ -60,7 +60,7 @@ class ProjectService {
         };
 
         projects.push(project);
-        this.store.set('projects', projects);
+        await this.store.set('projects', projects);
 
         // Initialize .file-sync directory
         await this._initializeSyncDir(project);
@@ -87,6 +87,7 @@ class ProjectService {
 
     /**
      * Initialize the .file-sync/ directory with encrypted copies and metadata
+     * Optimized for large bases: pooled concurrency + early prune + yields
      * @param {object} project
      */
     async _initializeSyncDir(project) {
@@ -94,18 +95,30 @@ class ProjectService {
         const filesDir = path.join(syncDir, FILES_DIR);
         const metadataPath = path.join(syncDir, METADATA_FILE);
 
-        // Create directories
+        // --- Auto-create .syncignore with basic ignore properties BEFORE encryption scan ---
+        // This ensures the file exists for first-time projects and that the
+        // subsequent walk + AES-256-CBC encryption step respects ignore rules
+        // (ignored files like .git, node_modules, .file-sync, *.log etc. are never encrypted)
+        try {
+            const created = this.syncIgnore.ensureDefaultIgnoreFile
+                ? this.syncIgnore.ensureDefaultIgnoreFile(project.folderPath)
+                : this.syncIgnore.createDefaultIgnoreFile(project.folderPath);
+            if (created) {
+                console.log(`Created default .syncignore at ${path.join(project.folderPath, '.syncignore')}`);
+            }
+        } catch (err) {
+            console.warn('Failed to auto-create .syncignore, continuing with defaults:', err.message);
+        }
+
         await fs.ensureDir(filesDir);
-
-        // Create default .syncignore if it doesn't exist
-        this.syncIgnore.createDefaultIgnoreFile(project.folderPath);
-
-        // Load .syncignore (always starts fresh - clears previous patterns)
+        // Reload fresh patterns (now guaranteed .syncignore exists if it was missing)
         this.syncIgnore.load(project.folderPath);
 
-        // Scan all files
         const allFiles = await this._getAllFiles(project.folderPath);
-        const trackedFiles = this.syncIgnore.filter(allFiles);
+        const trackedFiles = [];
+        for (const p of allFiles) {
+            if (!this.syncIgnore.isIgnored(p)) trackedFiles.push(p);
+        }
 
         const metadata = {
             projectId: project.id,
@@ -115,27 +128,22 @@ class ProjectService {
             files: {}
         };
 
-        // Process each file: hash, encrypt, store
-        for (const relativePath of trackedFiles) {
+        // Process with limited concurrency to saturate disk without blocking event loop
+        const CONCURRENCY = 8;
+        const failures = [];
+        await this._pooledMap(trackedFiles, CONCURRENCY, async (relativePath) => {
             const absolutePath = path.join(project.folderPath, relativePath);
-
             try {
                 const stat = await fs.stat(absolutePath);
-                if (!stat.isFile()) continue;
-
+                if (!stat.isFile()) return;
+                // Skip extremely large files > 50MB for initial snapshot to keep init responsive? Still store metadata but skip encryption? We store encryption regardless but stream it.
                 const fileHash = await hashFile(absolutePath);
                 const versionId = generateVersionId();
-
-                // Read and encrypt the file
                 const fileContent = await fs.readFile(absolutePath);
                 const encrypted = this.encryption.encrypt(fileContent);
-
-                // Store encrypted file with hash-based name
                 const encryptedFileName = hashData(relativePath) + '.enc';
                 const encryptedFilePath = path.join(filesDir, encryptedFileName);
                 await fs.writeFile(encryptedFilePath, encrypted);
-
-                // Store metadata with lastMtime for fast change detection
                 metadata.files[relativePath] = {
                     hash: fileHash,
                     lastModified: stat.mtime.toISOString(),
@@ -146,49 +154,82 @@ class ProjectService {
                     trackedSince: new Date().toISOString()
                 };
             } catch (err) {
+                failures.push(relativePath);
                 console.error(`Failed to process file: ${relativePath}`, err.message);
             }
-        }
+        });
 
-        // Write metadata atomically
+        if (failures.length) console.warn(`Init: ${failures.length} files skipped out of ${trackedFiles.length}`);
         await this._atomicWriteJson(metadataPath, metadata);
     }
 
     /**
-     * Recursively get all files in a directory (relative paths)
-     * @param {string} dir - Root directory
-     * @param {string} base - Base for relative path calculation
-     * @returns {Promise<string[]>}
+     * Fast iterative walk with early ignore-pruning.
+     * Returns relative file paths (forward slashes).
      */
-    async _getAllFiles(dir, base = dir) {
+    async _getAllFiles(rootDir, base = rootDir, maxDepth = 25) {
         const results = [];
-        const entries = await fs.readdir(dir, { withFileTypes: true });
-
-        for (const entry of entries) {
-            const fullPath = path.join(dir, entry.name);
-            const relativePath = path.relative(base, fullPath);
-
-            if (entry.isDirectory()) {
-                // Quick skip for known heavy dirs
-                if (['node_modules', '.git', '.file-sync', '.svn', 'vendor'].includes(entry.name)) {
-                    continue;
+        const stack = [{ dir: rootDir, depth: 0 }];
+        let processedDirs = 0;
+        while (stack.length > 0) {
+            const { dir, depth } = stack.pop();
+            if (depth > maxDepth) continue;
+            const relDir = path.relative(base, dir).replace(/\\/g, '/');
+            if (relDir && relDir !== '.' && this.syncIgnore.canPruneDir(relDir)) continue;
+            let entries;
+            try {
+                entries = await fs.readdir(dir, { withFileTypes: true });
+            } catch { continue; }
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                const relativePath = path.relative(base, fullPath).replace(/\\/g, '/');
+                if (entry.isDirectory()) {
+                    if (this.syncIgnore.canPruneDir(relativePath)) continue;
+                    const hardIgnores = ['node_modules', '.git', '.file-sync', '.svn', '__pycache__'];
+                    if (hardIgnores.includes(entry.name) && !relativePath.includes('/')) {
+                        let negated = false;
+                        for (const pat of this.syncIgnore.patterns) {
+                            if (pat.isNegation && pat.normalized.includes(entry.name)) { negated = true; break; }
+                        }
+                        if (!negated) continue;
+                    }
+                    stack.push({ dir: fullPath, depth: depth + 1 });
+                } else if (entry.isFile()) {
+                    results.push(relativePath);
+                } else {
+                    try {
+                        const st = await fs.stat(fullPath);
+                        if (st.isFile()) results.push(relativePath);
+                    } catch { /* ignore */ }
                 }
-                const subFiles = await this._getAllFiles(fullPath, base);
-                results.push(...subFiles);
-            } else {
-                results.push(relativePath);
             }
+            processedDirs++;
+            if (processedDirs % 200 === 0) await new Promise(r => setImmediate(r));
         }
-
         return results;
+    }
+
+    async _pooledMap(items, concurrency, worker) {
+        if (!items || items.length === 0) return;
+        const limit = Math.max(1, Math.min(concurrency, items.length));
+        let idx = 0;
+        const run = async () => {
+            while (true) {
+                const cur = idx++;
+                if (cur >= items.length) break;
+                try { await worker(items[cur], cur); } catch (e) { console.error('pooledMap error', e.message); }
+                if (cur % 100 === 0) await new Promise(r => setImmediate(r));
+            }
+        };
+        await Promise.all(Array.from({ length: limit }, () => run()));
     }
 
     /**
      * Get all registered projects
      * @returns {object[]}
      */
-    getProjects() {
-        return this.store.get('projects', []);
+    async getProjects() {
+        return await this.store.get('projects', []);
     }
 
     /**
@@ -196,8 +237,8 @@ class ProjectService {
      * @param {string} projectId
      * @returns {object|null}
      */
-    getProject(projectId) {
-        const projects = this.getProjects();
+    async getProject(projectId) {
+        const projects = await this.getProjects();
         return projects.find(p => p.id === projectId) || null;
     }
 
@@ -207,8 +248,8 @@ class ProjectService {
      * @param {object} updates
      * @returns {object}
      */
-    updateProject(projectId, updates) {
-        const projects = this.getProjects();
+    async updateProject(projectId, updates) {
+        const projects = await this.getProjects();
         const idx = projects.findIndex(p => p.id === projectId);
         if (idx === -1) {
             return { success: false, message: 'Project not found.' };
@@ -221,7 +262,7 @@ class ProjectService {
             }
         }
 
-        this.store.set('projects', projects);
+        await this.store.set('projects', projects);
         return { success: true, message: 'Project updated.', project: projects[idx] };
     }
 
@@ -232,7 +273,7 @@ class ProjectService {
      * @returns {object}
      */
     async deleteProject(projectId, removeSyncDir = false) {
-        const projects = this.getProjects();
+        const projects = await this.getProjects();
         const project = projects.find(p => p.id === projectId);
         if (!project) {
             return { success: false, message: 'Project not found.' };
@@ -244,7 +285,7 @@ class ProjectService {
         }
 
         const filtered = projects.filter(p => p.id !== projectId);
-        this.store.set('projects', filtered);
+        await this.store.set('projects', filtered);
 
         return { success: true, message: 'Project removed.' };
     }
@@ -256,7 +297,7 @@ class ProjectService {
      * @returns {object}
      */
     async reinitializeProject(projectId) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) {
             return { success: false, message: 'Project not found.' };
         }
@@ -273,11 +314,11 @@ class ProjectService {
         await this._initializeSyncDir(project);
 
         // Update lastSyncAt
-        const projects = this.getProjects();
+        const projects = await this.getProjects();
         const idx = projects.findIndex(p => p.id === projectId);
         if (idx !== -1) {
             projects[idx].lastSyncAt = null;
-            this.store.set('projects', projects);
+            await this.store.set('projects', projects);
         }
 
         return { success: true, message: 'Project re-initialized successfully.' };
@@ -289,7 +330,7 @@ class ProjectService {
      * @returns {object|null}
      */
     async getMetadata(projectId) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return null;
 
         const metadataPath = path.join(project.folderPath, SYNC_DIR, METADATA_FILE);
@@ -304,7 +345,7 @@ class ProjectService {
      * @param {object} updatedFiles - { [relativePath]: { hash, lastModified, size, versionId } }
      */
     async updateMetadata(projectId, updatedFiles) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return;
 
         const metadataPath = path.join(project.folderPath, SYNC_DIR, METADATA_FILE);
@@ -342,7 +383,7 @@ class ProjectService {
      * @param {string} relativePath
      */
     async updateStoredFile(projectId, relativePath) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return;
 
         const absolutePath = path.join(project.folderPath, relativePath);
@@ -364,7 +405,7 @@ class ProjectService {
      * @returns {string|null} - Decrypted file content as UTF-8 string
      */
     async getStoredFileContent(projectId, relativePath) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return null;
 
         const metadata = await this.getMetadata(projectId);
@@ -397,13 +438,15 @@ class ProjectService {
      * @returns {Promise<object>}
      */
     async stageFiles(projectId, files) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return { success: false, message: 'Project not found.' };
 
         const metadataPath = path.join(project.folderPath, SYNC_DIR, METADATA_FILE);
         const metadata = await fs.readJson(metadataPath);
         const filesDir = path.join(project.folderPath, SYNC_DIR, FILES_DIR);
         let staged = 0;
+
+        const failures = [];
 
         for (const file of files) {
             try {
@@ -420,10 +463,14 @@ class ProjectService {
                 }
 
                 // add or update: re-encrypt current file and update hash
-                if (!fs.existsSync(absolutePath)) continue;
+                if (!fs.existsSync(absolutePath)) {
+                    failures.push({ path: file.path, error: 'File not found on disk' });
+                    continue;
+                }
 
                 const stat = await fs.stat(absolutePath);
-                const fileHash = await hashFile(absolutePath);
+                // hashFile now has internal retry + 30s timeout; pass explicitly
+                const fileHash = await hashFile(absolutePath, 30000);
                 const versionId = generateVersionId();
 
                 // Re-encrypt and store
@@ -451,11 +498,26 @@ class ProjectService {
                 staged++;
             } catch (err) {
                 console.error(`Stage failed for ${file.path}:`, err.message);
+                failures.push({ path: file.path, error: err.message });
             }
+            // Yield to event loop between files to reduce disk contention on Windows
+            await new Promise(r => setImmediate(r));
         }
 
         metadata.lastScanAt = new Date().toISOString();
         await this._atomicWriteJson(metadataPath, metadata);
+
+        if (failures.length > 0) {
+            return {
+                success: staged > 0,
+                staged,
+                failed: failures.length,
+                failures,
+                message: failures.length === files.length
+                    ? `Staging failed for all ${failures.length} file(s): ${failures[0].error}`
+                    : `Staged ${staged}/${files.length} file(s). ${failures.length} failed: ${failures.map(f => f.path).join(', ')}`
+            };
+        }
 
         return { success: true, staged, message: `Staged ${staged} file(s).` };
     }
@@ -466,7 +528,7 @@ class ProjectService {
      * @returns {Promise<object[]>}
      */
     async getStagedFiles(projectId) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return [];
 
         const metadata = await this.getMetadata(projectId);
@@ -506,7 +568,7 @@ class ProjectService {
      * @param {string[]} filePaths - Paths that were successfully deployed
      */
     async markFilesDeployed(projectId, filePaths) {
-        const project = this.getProject(projectId);
+        const project = await this.getProject(projectId);
         if (!project) return;
 
         const metadataPath = path.join(project.folderPath, SYNC_DIR, METADATA_FILE);
